@@ -1,0 +1,41 @@
+[project]
+name = "fuelbuddy_inventory"
+authors = [
+    { name = "FuelBuddy", email = "dev@example.com"}
+]
+description = "Litres-only ledger per fuel tank beside ERPNext's single fuel warehouse"
+requires-python = ">=3.10"
+dynamic = ["version"]
+dependencies = [
+    # "frappe~=15.0.0" # Installed and managed by bench.
+]
+
+[build-system]
+requires = ["flit_core >=3.4,<4"]
+build-backend = "flit_core.buildapi"
+
+[tool.bench.frappe-dependencies]
+frappe = ">=15.0.0,<17.0.0"
+erpnext = ">=15.0.0,<17.0.0"
+
+[tool.ruff]
+line-length = 110
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["F", "E", "W", "I", "UP", "B", "RUF"]
+ignore = [
+    "B017", # assertRaises(Exception)
+    "E101", # mixed spaces and tabs
+    "E402", # module level import not at top of file
+    "E501", # line too long
+    "F401", # unused imports
+    "W191", # indentation contains tabs
+    "RUF012", # mutable class attributes
+]
+typing-modules = ["frappe.types.DF"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "tab"
+docstring-code-format = true

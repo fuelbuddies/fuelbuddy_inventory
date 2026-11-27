@@ -1,0 +1,146 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "field:app_tank_id",
+ "creation": "2026-11-27 12:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "app_tank_id",
+  "label",
+  "vehicle_registration",
+  "vehicle_type",
+  "column_break_main",
+  "tank_type",
+  "compartment_no",
+  "capacity_litres",
+  "disabled"
+ ],
+ "fields": [
+  {
+   "description": "The app's tank id (vehicle_tank_type.id). The record's name: set once, never changed.",
+   "fieldname": "app_tank_id",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "App Tank ID",
+   "reqd": 1,
+   "set_only_once": 1,
+   "unique": 1
+  },
+  {
+   "description": "What people see in links and reports, e.g. registration and compartment.",
+   "fieldname": "label",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Label",
+   "reqd": 1
+  },
+  {
+   "fieldname": "vehicle_registration",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Vehicle Registration",
+   "search_index": 1
+  },
+  {
+   "fieldname": "vehicle_type",
+   "fieldtype": "Select",
+   "in_standard_filter": 1,
+   "label": "Vehicle Type",
+   "options": "\nBOWSER\nCONTAINER"
+  },
+  {
+   "fieldname": "column_break_main",
+   "fieldtype": "Column Break",
+   "label": ""
+  },
+  {
+   "fieldname": "tank_type",
+   "fieldtype": "Data",
+   "label": "Tank Type"
+  },
+  {
+   "fieldname": "compartment_no",
+   "fieldtype": "Int",
+   "label": "Compartment No"
+  },
+  {
+   "fieldname": "capacity_litres",
+   "fieldtype": "Float",
+   "label": "Capacity (Litres)",
+   "non_negative": 1
+  },
+  {
+   "default": "0",
+   "description": "A disabled tank cannot be named on new documents. Tanks are never deleted.",
+   "fieldname": "disabled",
+   "fieldtype": "Check",
+   "in_standard_filter": 1,
+   "label": "Disabled"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-11-27 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Fuelbuddy Inventory",
+ "name": "Fuel Tank",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Stock Manager"
+  },
+  {
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Stock User"
+  },
+  {
+   "read": 1,
+   "report": 1,
+   "role": "Accounts User"
+  },
+  {
+   "read": 1,
+   "report": 1,
+   "role": "Accounts Manager"
+  },
+  {
+   "read": 1,
+   "report": 1,
+   "role": "Sales User"
+  },
+  {
+   "read": 1,
+   "report": 1,
+   "role": "Purchase User"
+  }
+ ],
+ "search_fields": "label,vehicle_registration",
+ "show_title_field_in_link": 1,
+ "sort_field": "label",
+ "sort_order": "ASC",
+ "states": [],
+ "title_field": "label",
+ "track_changes": 1
+}

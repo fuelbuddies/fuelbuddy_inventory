@@ -1,0 +1,179 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "naming_series:",
+ "creation": "2026-11-27 12:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "naming_series",
+  "from_tank",
+  "to_tank",
+  "qty",
+  "column_break_posting",
+  "posting_date",
+  "posting_time",
+  "company",
+  "section_break_keys",
+  "op_key",
+  "source_request_id",
+  "amended_from"
+ ],
+ "fields": [
+  {
+   "default": "TT-.YYYY.-",
+   "fieldname": "naming_series",
+   "fieldtype": "Select",
+   "hidden": 1,
+   "label": "Series",
+   "options": "TT-.YYYY.-",
+   "reqd": 1
+  },
+  {
+   "fieldname": "from_tank",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "From Tank",
+   "link_filters": "[[\"Fuel Tank\", \"disabled\", \"=\", 0]]",
+   "options": "Fuel Tank",
+   "reqd": 1
+  },
+  {
+   "fieldname": "to_tank",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "To Tank",
+   "link_filters": "[[\"Fuel Tank\", \"disabled\", \"=\", 0]]",
+   "options": "Fuel Tank",
+   "reqd": 1
+  },
+  {
+   "fieldname": "qty",
+   "fieldtype": "Float",
+   "in_list_view": 1,
+   "label": "Qty (Litres)",
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_posting",
+   "fieldtype": "Column Break",
+   "label": ""
+  },
+  {
+   "default": "Today",
+   "fieldname": "posting_date",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "label": "Posting Date",
+   "reqd": 1
+  },
+  {
+   "default": "Now",
+   "fieldname": "posting_time",
+   "fieldtype": "Time",
+   "label": "Posting Time",
+   "reqd": 1
+  },
+  {
+   "description": "The fuel warehouse's company, for Accounting Period checks.",
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_break_keys",
+   "fieldtype": "Section Break",
+   "label": "Keys"
+  },
+  {
+   "description": "The app operation's key (erp-tank-transfer-<request id>). ERP accepts each key once.",
+   "fieldname": "op_key",
+   "fieldtype": "Data",
+   "in_standard_filter": 1,
+   "label": "Op Key",
+   "no_copy": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "source_request_id",
+   "fieldtype": "Data",
+   "label": "Source Request ID",
+   "no_copy": 1
+  },
+  {
+   "fieldname": "amended_from",
+   "fieldtype": "Link",
+   "label": "Amended From",
+   "no_copy": 1,
+   "options": "Tank Transfer",
+   "print_hide": 1,
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "is_submittable": 1,
+ "links": [],
+ "modified": "2026-11-27 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Fuelbuddy Inventory",
+ "name": "Tank Transfer",
+ "naming_rule": "By \"Naming Series\" field",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "amend": 1,
+   "cancel": 1,
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "submit": 1,
+   "write": 1
+  },
+  {
+   "amend": 1,
+   "cancel": 1,
+   "create": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Stock Manager",
+   "submit": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Stock User",
+   "write": 1
+  },
+  {
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Accounts User"
+  },
+  {
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Accounts Manager"
+  }
+ ],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}
