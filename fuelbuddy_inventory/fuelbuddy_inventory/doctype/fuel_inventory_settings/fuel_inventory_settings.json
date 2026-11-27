@@ -1,0 +1,69 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "creation": "2026-11-27 12:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "fuel_item",
+  "fuel_warehouse",
+  "tracking_start",
+  "approval_threshold_litres"
+ ],
+ "fields": [
+  {
+   "description": "The stock item the tank ledger follows (stock UOM litres).",
+   "fieldname": "fuel_item",
+   "fieldtype": "Link",
+   "label": "Fuel Item",
+   "options": "Item"
+  },
+  {
+   "description": "The one warehouse that holds all of it.",
+   "fieldname": "fuel_warehouse",
+   "fieldtype": "Link",
+   "label": "Fuel Warehouse",
+   "options": "Warehouse"
+  },
+  {
+   "default": "2026-11-30 23:59:59",
+   "description": "Documents dated before this need no tank and write no tank rows.",
+   "fieldname": "tracking_start",
+   "fieldtype": "Datetime",
+   "label": "Tracking Start",
+   "reqd": 1
+  },
+  {
+   "description": "A Stock Reconciliation whose fuel difference exceeds this sets Fuel Count Needs Approval, for an ERP Workflow condition. 0 = never.",
+   "fieldname": "approval_threshold_litres",
+   "fieldtype": "Float",
+   "label": "Count Approval Threshold (Litres)",
+   "non_negative": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-11-27 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Fuelbuddy Inventory",
+ "name": "Fuel Inventory Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "read": 1,
+   "role": "Stock Manager"
+  }
+ ],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}
