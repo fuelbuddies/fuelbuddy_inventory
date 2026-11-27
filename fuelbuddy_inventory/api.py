@@ -12,6 +12,9 @@ ok false   the call changed nothing; ``code`` says why, ``message`` in words:
            CANCELLED_IN_ERP, TANK_MISMATCH, QTY_MISMATCH (create_tank_transfer)        final
 retryable  true only for LOCK_RETRY.
 
+A write that hits a deadlock or a lock wait is run again here first, after a short random pause (a
+deadlock up to twice, a lock wait once); LOCK_RETRY is what is left after that.
+
 Anything else (ERP down, a defect) is an HTTP error, which erp-functions treats as "outcome unknown"
 for a write and re-checks by key.
 
@@ -20,7 +23,8 @@ upsert_fuel_tank(app_tank_id, label, vehicle_registration, vehicle_type, tank_ty
     Creates or updates the Fuel Tank named app_tank_id; never changes its identity. capacity_unit is
     LITRE or IMPERIAL_GALLON (4.546 L). The tank is saved disabled when the vehicle type is not
     BOWSER or CONTAINER, when is_test is true, when active or vehicle_active is false, or when
-    disabled is true. Adds name, created, disabled.
+    disabled is true. Adds name, created, disabled. Safe to call at once for the same new tank: one
+    call creates it, the others update it (created false).
 
 create_tank_transfer(op_key, from_tank, to_tank, qty, posting_datetime, source_request_id)  POST
     Replay-safe on op_key, as erp-functions' opKey.js: the key is looked up at any docstatus first.
@@ -49,6 +53,8 @@ get_tank_balances(tank_ids, as_of)  GET
 
 import json
 import math
+import random
+import time
 
 import frappe
 from frappe.utils import cint, cstr, flt, get_datetime, now_datetime, strip_html
@@ -68,6 +74,13 @@ BAD_QTY = "BAD_QTY"
 RETRYABLE = frozenset({LOCK_RETRY})
 
 LOCK_WAIT_SECONDS = 8
+# A write that hits a lock conflict runs again (_in_transaction): a deadlock is found at once, so up to
+# twice; a lock wait has already cost LOCK_WAIT_SECONDS, so once. Retry n waits a random
+# RETRY_PAUSE_SECONDS x n first.
+DEADLOCK = "deadlock"
+LOCK_WAIT = "lock wait"
+LOCK_RETRIES = {DEADLOCK: 2, LOCK_WAIT: 1}
+RETRY_PAUSE_SECONDS = (0.05, 0.2)
 MAX_LENGTH = 140
 LITRES_PER_IMPERIAL_GALLON = 4.546
 VEHICLE_TYPES = ("BOWSER", "CONTAINER")
@@ -128,7 +141,7 @@ def upsert_fuel_tank(
 		)
 	except Refusal as refusal:
 		return _refused(refusal)
-	return _in_transaction(lambda: _upsert_tank(values))
+	return _in_transaction(lambda: _upsert_tank(values), retry_on_duplicate=True)
 
 
 def _tank_values(
@@ -167,10 +180,15 @@ def _tank_values(
 
 
 def _upsert_tank(values):
-	name = frappe.db.get_value(ledger.FUEL_TANK, values.app_tank_id, "name", for_update=True)
+	"""Create or update the Fuel Tank. Whether it exists is a plain read: a locking read of a missing key
+	takes a gap lock on the primary key, and two first syncs holding the same gap deadlock on their
+	inserts. A racing first write of the same tank loses on the primary key; _in_transaction runs this
+	again in a new transaction, whose read finds the winner's row: an update."""
+	name = frappe.db.get_value(ledger.FUEL_TANK, values.app_tank_id, "name")
 	if name:
 		_check_permitted(ledger.FUEL_TANK, ("write",))
-		doc = frappe.get_doc(ledger.FUEL_TANK, name)
+		# The row exists: this locks it alone (no gap) and reads its latest committed version.
+		doc = frappe.get_doc(ledger.FUEL_TANK, name, for_update=True)
 		changed = False
 		for field, value in values.items():
 			if field != "app_tank_id" and _differs(doc.get(field), value):
@@ -191,7 +209,7 @@ def _upsert_tank(values):
 
 def _differs(current, new):
 	if isinstance(new, int | float) or isinstance(current, int | float):
-		return current in (None, "") and new is not None or flt(current) != flt(new)
+		return (current in (None, "") and new is not None) or flt(current) != flt(new)
 	return cstr(current) != cstr(new)
 
 
@@ -479,30 +497,64 @@ def _refused(refusal):
 
 def _in_transaction(step, retry_on_duplicate=False):
 	"""Run one write and commit it, or roll it all back and answer with the refusal. The session waits
-	at most LOCK_WAIT_SECONDS for a row lock. A duplicate key (a racing first write committed first)
-	is answered by running the step once more, which then reads the winner's row."""
+	at most LOCK_WAIT_SECONDS for a row lock. After the rollback the step runs again, in a new
+	transaction (so with a fresh snapshot):
+	  a deadlock          up to LOCK_RETRIES[DEADLOCK] times, each after a short random pause
+	  a lock wait timeout up to LOCK_RETRIES[LOCK_WAIT] times, the same way (each costs LOCK_WAIT_SECONDS)
+	  a duplicate key     once, with retry_on_duplicate: a racing first write committed first, and the
+	                      step now reads the winner's row
+	Still failing, the call is answered with its refusal (a lock conflict: LOCK_RETRY, retryable)."""
 	previous = _set_lock_wait(LOCK_WAIT_SECONDS)
+	retries = {DEADLOCK: 0, LOCK_WAIT: 0}
+	duplicate_retried = False
 	try:
-		for attempt in (1, 2):
+		while True:
 			try:
 				result = step()
 				frappe.db.commit()
 				return result
 			except Exception as exc:
 				frappe.db.rollback()
-				if (
-					retry_on_duplicate
-					and attempt == 1
-					and isinstance(exc, frappe.DuplicateEntryError | frappe.UniqueValidationError)
-				):
-					frappe.clear_messages()
-					continue
-				refusal = _as_refusal(exc)
-				if refusal is None:
-					raise
-				return _refused(refusal)
+				conflict = _lock_conflict(exc)
+				if retry_on_duplicate and not duplicate_retried and _is_duplicate(exc):
+					duplicate_retried = True
+				elif conflict and retries[conflict] < LOCK_RETRIES[conflict]:
+					retries[conflict] += 1
+					_pause(sum(retries.values()))
+				else:
+					refusal = _as_refusal(exc)
+					if refusal is None:
+						raise
+					return _refused(refusal)
+				frappe.clear_messages()
 	finally:
 		_set_lock_wait(previous)
+
+
+def _is_duplicate(exc):
+	return isinstance(exc, frappe.DuplicateEntryError | frappe.UniqueValidationError)
+
+
+def _lock_conflict(exc):
+	"""DEADLOCK, LOCK_WAIT, or None: MariaDB rolled back the transaction (deadlock) or the statement (lock
+	wait timeout); either way nothing of it is kept once _in_transaction has rolled back."""
+	if isinstance(exc, frappe.QueryDeadlockError) or _db_says(frappe.db.is_deadlocked, exc):
+		return DEADLOCK
+	if isinstance(exc, frappe.QueryTimeoutError) or _db_says(frappe.db.is_timedout, exc):
+		return LOCK_WAIT
+	return None
+
+
+def _db_says(check, exc):
+	try:
+		return bool(check(exc))
+	except Exception:
+		return False
+
+
+def _pause(retry):
+	"""A random pause before retry n, so the transactions that collided do not meet again in step."""
+	time.sleep(random.uniform(*RETRY_PAUSE_SECONDS) * retry)
 
 
 def _read_only(step):
@@ -536,18 +588,11 @@ def _as_refusal(exc):
 		| frappe.UniqueValidationError,
 	):
 		return Refusal(LOCK_RETRY, _message(exc))
-	if _is_lock_error(exc):
+	if _lock_conflict(exc):
 		return Refusal(LOCK_RETRY, _message(exc))
 	if isinstance(exc, frappe.ValidationError | frappe.PermissionError):
 		return Refusal(ERP_VALIDATION, _message(exc))
 	return None
-
-
-def _is_lock_error(exc):
-	try:
-		return bool(frappe.db.is_deadlocked(exc) or frappe.db.is_timedout(exc))
-	except Exception:
-		return False
 
 
 def _message(exc):

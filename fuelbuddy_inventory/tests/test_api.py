@@ -1,8 +1,10 @@
 """The whitelisted API. Write methods commit, so fixtures are committed before calling them."""
 
 import uuid
+from unittest.mock import patch
 
 import frappe
+import pymysql
 from frappe.utils import add_to_date, get_datetime, now_datetime
 
 from fuelbuddy_inventory import api
@@ -174,6 +176,33 @@ class TestUpsertFuelTank(FuelTestCase):
 		)
 		self.assertEqual(enabled["disabled"], 0)
 
+	def test_upsert_answers_an_update_when_it_loses_the_first_write(self):
+		"""Another call created the tank after this one read it as missing: the insert loses on the
+		primary key, and the call runs again in a new transaction as an update."""
+		tank_id = str(uuid.uuid4())
+		real_get_value = frappe.db.get_value
+		missed = []
+
+		def stale_read(*args, **kwargs):
+			if args[:2] == ("Fuel Tank", tank_id) and not missed:
+				missed.append(tank_id)
+				winner = {"doctype": "Fuel Tank", "app_tank_id": tank_id, "label": "TEST-TRUCK-12 C0"}
+				frappe.get_doc(winner).insert(ignore_permissions=True)
+				frappe.db.commit()
+				return None
+			return real_get_value(*args, **kwargs)
+
+		database = type(frappe.db._get_current_object())
+		with patch.object(database, "get_value", side_effect=stale_read):
+			answer = api.upsert_fuel_tank(
+				app_tank_id=tank_id, label="TEST-TRUCK-12 C1", vehicle_type="BOWSER"
+			)
+		self.assertEqual(missed, [tank_id])
+		self.assertTrue(answer["ok"], answer)
+		self.assertEqual((answer["name"], answer["created"]), (tank_id, False))
+		self.assertEqual(frappe.db.get_value("Fuel Tank", tank_id, "label"), "TEST-TRUCK-12 C1")
+		self.assertEqual(frappe.get_all("Fuel Tank", filters={"name": tank_id}, pluck="name"), [tank_id])
+
 	def test_upsert_refuses_bad_input(self):
 		answer = api.upsert_fuel_tank(app_tank_id="", label="x", vehicle_type="BOWSER")
 		self.assertEqual((answer["ok"], answer["code"]), (False, "ERP_VALIDATION"))
@@ -185,3 +214,68 @@ class TestUpsertFuelTank(FuelTestCase):
 			capacity_unit="BARREL",
 		)
 		self.assertEqual((answer["ok"], answer["code"]), (False, "ERP_VALIDATION"))
+
+
+class TestLockRetries(FuelTestCase):
+	"""_in_transaction runs a write again after a deadlock (up to twice) or a lock wait timeout (once),
+	each after a short pause, then answers LOCK_RETRY. The pause is patched out."""
+
+	def run_failing(self, failures, retry_on_duplicate=False):
+		"""Run a step that raises each of `failures` in turn, then answers ok. Returns (answer, runs, pauses)."""
+		runs = []
+
+		def step():
+			runs.append(len(runs) + 1)
+			if len(runs) <= len(failures):
+				raise failures[len(runs) - 1]
+			return api._answer({"run": len(runs)})
+
+		with patch.object(api, "_pause") as pause:
+			answer = api._in_transaction(step, retry_on_duplicate=retry_on_duplicate)
+		return answer, len(runs), [call.args[0] for call in pause.call_args_list]
+
+	def deadlock(self):
+		return frappe.QueryDeadlockError("(1213, 'Deadlock found when trying to get lock')")
+
+	def test_a_deadlock_is_run_again_up_to_twice(self):
+		answer, runs, pauses = self.run_failing([self.deadlock(), self.deadlock()])
+		self.assertTrue(answer["ok"], answer)
+		self.assertEqual((answer["result"], runs, pauses), ({"run": 3}, 3, [1, 2]))
+
+	def test_a_third_deadlock_is_answered_lock_retry(self):
+		answer, runs, _pauses = self.run_failing([self.deadlock(), self.deadlock(), self.deadlock()])
+		self.assertEqual(
+			(answer["ok"], answer["code"], answer["retryable"], answer["result"]),
+			(False, "LOCK_RETRY", True, None),
+		)
+		self.assertIn("Deadlock", answer["message"])
+		self.assertEqual(runs, 3)
+
+	def test_a_raw_mariadb_deadlock_is_a_deadlock_too(self):
+		raw = pymysql.err.OperationalError(1213, "Deadlock found when trying to get lock")
+		answer, runs, _pauses = self.run_failing([raw])
+		self.assertEqual((answer["ok"], runs), (True, 2))
+
+	def test_a_lock_wait_timeout_is_run_again_once(self):
+		timeout = frappe.QueryTimeoutError("(1205, 'Lock wait timeout exceeded')")
+		answer, runs, _pauses = self.run_failing([timeout])
+		self.assertEqual((answer["ok"], runs), (True, 2))
+		answer, runs, pauses = self.run_failing([timeout, timeout])
+		self.assertEqual((answer["ok"], answer["code"], answer["retryable"]), (False, "LOCK_RETRY", True))
+		self.assertEqual((runs, pauses), (2, [1]))
+
+	def test_a_duplicate_is_run_again_once_and_only_when_asked(self):
+		duplicate = frappe.DuplicateEntryError("Fuel Tank", "x", None)
+		answer, runs, pauses = self.run_failing([duplicate], retry_on_duplicate=True)
+		self.assertEqual((answer["ok"], runs, pauses), (True, 2, []))
+		answer, runs, _pauses = self.run_failing([duplicate, duplicate], retry_on_duplicate=True)
+		self.assertEqual((answer["ok"], answer["code"], runs), (False, "LOCK_RETRY", 2))
+		answer, runs, _pauses = self.run_failing([duplicate])
+		self.assertEqual((answer["ok"], answer["code"], runs), (False, "LOCK_RETRY", 1))
+
+	def test_a_refusal_is_never_run_again(self):
+		answer, runs, pauses = self.run_failing([frappe.ValidationError("bad input")])
+		self.assertEqual(
+			(answer["ok"], answer["code"], answer["retryable"]), (False, "ERP_VALIDATION", False)
+		)
+		self.assertEqual((runs, pauses), (1, []))
